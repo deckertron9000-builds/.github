@@ -32,9 +32,12 @@ jobs:
 
       - name: Generate Gradle wrapper
         run: |
-          [ -f gradlew ] || gradle wrapper --gradle-version \
-            $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | grep -oP '[\d]+\.[\d]+\.?[\d]*(?=-)')
-
+          if [ ! -f gradlew ]; then
+            VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | grep -oP '[\d]+\.[\d]+\.?[\d]*(?=-)')
+            CHECKSUM=$(grep distributionSha256Sum gradle/wrapper/gradle-wrapper.properties | cut -d= -f2)
+            gradle wrapper --gradle-version "$VERSION" --gradle-distribution-sha256-sum "$CHECKSUM"
+          fi
+          
       - name: Build unsigned release APK
         run: ./gradlew assembleRelease
 
