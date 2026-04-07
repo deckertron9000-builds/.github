@@ -19,24 +19,25 @@ jobs:
         run: |
           UPSTREAM_URL=$(gh api repos/${{ github.repository }} --jq '.parent.clone_url')
           echo "url=$UPSTREAM_URL" >> $GITHUB_OUTPUT
+          UPSTREAM_BRANCH=$(gh api repos/${{ github.repository }} --jq '.parent.default_branch')
+          echo "branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Add upstream remote
         run: |
           git remote add upstream ${{ steps.upstream.outputs.url }}
-          git fetch upstream master --tags
+          git fetch upstream ${{ steps.upstream.outputs.branch }} --tags
 
       - name: Merge upstream into fork
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/master --ff-only
-
-          NEW_TAG=$(git tag --sort=-version:refname | grep '^V' | head -1)
-          LOCAL_TAG=$(git ls-remote origin --tags | grep -o 'V[0-9]*\.[0-9]*' | sort -V | tail -1)
-
+          git merge upstream/${{ steps.upstream.outputs.branch }} --ff-only
+          
+          NEW_TAG=$(git tag --sort=-version:refname | grep -E '^[vV][0-9]' | head -1)
+          LOCAL_TAG=$(git ls-remote origin --tags | grep -oE '[vV][0-9]+\.[0-9]+(\.[0-9]+)?' | sort -V | tail -1)
           if [ "$NEW_TAG" != "$LOCAL_TAG" ]; then
             echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "has_new_tag=true" >> $GITHUB_OUTPUT
@@ -44,14 +45,14 @@ jobs:
             echo "has_new_tag=false" >> $GITHUB_OUTPUT
           fi
 
-          git push origin master --tags
+          git push origin ${{ steps.upstream.outputs.branch }} --tags
 
       - name: Trigger build workflow
         if: steps.merge.outputs.has_new_tag == 'true'
         run: |
           gh workflow run build.yml \
             --repo ${{ github.repository }} \
-            --ref master \
+            --ref ${{ steps.upstream.outputs.branch }} \
             --raw-field tag=${{ steps.merge.outputs.new_tag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
