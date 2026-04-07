@@ -31,7 +31,9 @@ jobs:
           cache: gradle
 
       - name: Generate Gradle wrapper
-        run: gradle wrapper
+        run: |
+          [ -f gradlew ] || gradle wrapper --gradle-version \
+            $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | grep -oP '[\d]+\.[\d]+\.?[\d]*(?=-)')
 
       - name: Build unsigned release APK
         run: ./gradlew assembleRelease
