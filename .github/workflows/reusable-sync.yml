@@ -8,51 +8,39 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout fork
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get upstream URL from GitHub API
+      - name: Get upstream info from GitHub API
         id: upstream
         run: |
-          UPSTREAM_URL=$(gh api repos/${{ github.repository }} --jq '.parent.clone_url')
-          echo "url=$UPSTREAM_URL" >> $GITHUB_OUTPUT
+          UPSTREAM_REPO=$(gh api repos/${{ github.repository }} --jq '.parent.full_name')
           UPSTREAM_BRANCH=$(gh api repos/${{ github.repository }} --jq '.parent.default_branch')
+          echo "repo=$UPSTREAM_REPO" >> $GITHUB_OUTPUT
           echo "branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Add upstream remote
+      - name: Get latest upstream tag
+        id: upstream_tag
         run: |
-          git remote add upstream ${{ steps.upstream.outputs.url }}
-          git fetch upstream ${{ steps.upstream.outputs.branch }} --tags
+          LATEST_TAG=$(gh api repos/${{ steps.upstream.outputs.repo }}/tags --jq '.[0].name')
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Merge upstream into fork
-        id: merge
+      - name: Get latest fork release
+        id: fork_release
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/${{ steps.upstream.outputs.branch }}
-          
-          NEW_TAG=$(git tag --sort=-version:refname | grep -E '^[vV][0-9]' | head -1)
-          LOCAL_TAG=$(git ls-remote origin --tags | grep -oE '[vV][0-9]+\.[0-9]+(\.[0-9]+)?' | sort -V | tail -1)
-          if [ "$NEW_TAG" != "$LOCAL_TAG" ]; then
-            echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-            echo "has_new_tag=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_new_tag=false" >> $GITHUB_OUTPUT
-          fi
+          LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          echo "tag=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          git push origin ${{ steps.upstream.outputs.branch }} --tags
-
-      - name: Trigger build workflow
-        if: steps.merge.outputs.has_new_tag == 'true'
+      - name: Trigger build if new tag
+        if: steps.upstream_tag.outputs.tag != steps.fork_release.outputs.tag
         run: |
           gh workflow run build.yml \
             --repo ${{ github.repository }} \
             --ref ${{ steps.upstream.outputs.branch }} \
-            --raw-field tag=${{ steps.merge.outputs.new_tag }}
+            --raw-field tag=${{ steps.upstream_tag.outputs.tag }} \
+            --raw-field upstream_repo=${{ steps.upstream.outputs.repo }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
