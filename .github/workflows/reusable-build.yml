@@ -11,6 +11,16 @@ on:
         description: 'Upstream repository (owner/repo)'
         required: true
         type: string
+      gradle_task:
+        description: 'Gradle task to build the release APK'
+        required: false
+        type: string
+        default: 'assembleRelease'
+      apk_path:
+        description: 'Path to the built APK relative to repo root'
+        required: false
+        type: string
+        default: 'app/build/outputs/apk/release/app-release-unsigned.apk'
     secrets:
       SIGNING_KEYSTORE_B64:
         required: true
@@ -54,7 +64,7 @@ jobs:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew ${{ inputs.gradle_task }} \
             -PreleaseStoreFile=/tmp/release.jks \
             -PreleaseStorePassword="$SIGNING_PASSWORD" \
             -PreleaseKeyAlias="$SIGNING_KEY_ALIAS" \
@@ -68,9 +78,9 @@ jobs:
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -1)
 
-          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          APK="${{ inputs.apk_path }}"
           if [ ! -f "$APK" ]; then
-            APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+            APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
           fi
 
           APK_NAME="${{ github.event.repository.name }}-signed.apk"
